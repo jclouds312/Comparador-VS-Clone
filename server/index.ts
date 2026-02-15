@@ -3,6 +3,7 @@ import type { Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import * as fs from "fs";
 import * as path from "path";
+import { createProxyMiddleware } from "http-proxy-middleware";
 
 const app = express();
 const log = console.log;
@@ -22,7 +23,7 @@ function setupCors(app: express.Application) {
     }
 
     if (process.env.REPLIT_DOMAINS) {
-      process.env.REPLIT_DOMAINS.split(",").forEach((d) => {
+      process.env.REPLIT_DOMAINS.split(",").forEach((d: string) => {
         origins.add(`https://${d.trim()}`);
       });
     }
@@ -164,47 +165,71 @@ function serveLandingPage({
 }
 
 function configureExpoAndLanding(app: express.Application) {
-  const templatePath = path.resolve(
-    process.cwd(),
-    "server",
-    "templates",
-    "landing-page.html",
-  );
-  const landingPageTemplate = fs.readFileSync(templatePath, "utf-8");
-  const appName = getAppName();
+  const isDev = process.env.NODE_ENV === "development";
 
-  log("Serving static Expo files with dynamic manifest routing");
+  if (isDev) {
+    log("Development mode: Proxying non-API requests to Metro (port 8081)");
+    app.use((req, res, next) => {
+      if (req.path.startsWith("/api")) {
+        return next();
+      }
 
-  app.use((req: Request, res: Response, next: NextFunction) => {
-    if (req.path.startsWith("/api")) {
-      return next();
-    }
+      // Special handling for Expo Go QR/Manifest if requested via header
+      const platform = req.header("expo-platform");
+      if (platform && (platform === "ios" || platform === "android")) {
+        if (req.path === "/" || req.path === "/manifest") {
+          return serveExpoManifest(platform, res);
+        }
+      }
 
-    if (req.path !== "/" && req.path !== "/manifest") {
-      return next();
-    }
+      // Proxy everything else to Metro (Expo Web)
+      return createProxyMiddleware({
+        target: "http://localhost:8081",
+        changeOrigin: true,
+        ws: true,
+      })(req, res, next);
+    });
+  } else {
+    const templatePath = path.resolve(
+      process.cwd(),
+      "server",
+      "templates",
+      "landing-page.html",
+    );
+    const landingPageTemplate = fs.readFileSync(templatePath, "utf-8");
+    const appName = getAppName();
 
-    const platform = req.header("expo-platform");
-    if (platform && (platform === "ios" || platform === "android")) {
-      return serveExpoManifest(platform, res);
-    }
+    log("Production mode: Serving landing page or static build");
 
-    if (req.path === "/") {
-      return serveLandingPage({
-        req,
-        res,
-        landingPageTemplate,
-        appName,
-      });
-    }
+    app.use((req: Request, res: Response, next: NextFunction) => {
+      if (req.path.startsWith("/api")) {
+        return next();
+      }
 
-    next();
-  });
+      if (req.path !== "/" && req.path !== "/manifest") {
+        return next();
+      }
 
-  app.use("/assets", express.static(path.resolve(process.cwd(), "assets")));
-  app.use(express.static(path.resolve(process.cwd(), "static-build")));
+      const platform = req.header("expo-platform");
+      if (platform && (platform === "ios" || platform === "android")) {
+        return serveExpoManifest(platform, res);
+      }
 
-  log("Expo routing: Checking expo-platform header on / and /manifest");
+      if (req.path === "/") {
+        return serveLandingPage({
+          req,
+          res,
+          landingPageTemplate,
+          appName,
+        });
+      }
+
+      next();
+    });
+
+    app.use("/assets", express.static(path.resolve(process.cwd(), "assets")));
+    app.use(express.static(path.resolve(process.cwd(), "static-build")));
+  }
 }
 
 function setupErrorHandler(app: express.Application) {
