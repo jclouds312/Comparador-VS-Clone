@@ -31,11 +31,16 @@ function setupCors(app: express.Application) {
     const origin = req.header("origin");
 
     // Allow localhost origins for Expo web development (any port)
+    // Also allow Replit dev domains and public domains
     const isLocalhost =
       origin?.startsWith("http://localhost:") ||
       origin?.startsWith("http://127.0.0.1:");
+    
+    const isReplit = 
+      origin?.includes(".replit.dev") || 
+      origin?.includes(".worf.replit.dev");
 
-    if (origin && (origins.has(origin) || isLocalhost)) {
+    if (origin && (origins.has(origin) || isLocalhost || isReplit)) {
       res.header("Access-Control-Allow-Origin", origin);
       res.header(
         "Access-Control-Allow-Methods",
