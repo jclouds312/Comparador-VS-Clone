@@ -174,24 +174,33 @@ function configureExpoAndLanding(app: express.Application) {
 
   if (isDev) {
     log("Development mode: Proxying non-API requests to Metro (port 8081)");
+    
+    // Serve static assets even in dev if requested
+    app.use("/assets", express.static(path.resolve(process.cwd(), "assets")));
+
     app.use((req, res, next) => {
       if (req.path.startsWith("/api")) {
         return next();
       }
 
       // Special handling for Expo Go QR/Manifest if requested via header
-      const platform = req.header("expo-platform");
-      if (platform && (platform === "ios" || platform === "android")) {
-        if (req.path === "/" || req.path === "/manifest") {
-          return serveExpoManifest(platform, res);
-        }
+      const platform = req.header("expo-platform") || req.query.platform as string;
+      
+      if (req.path === "/--/manifest" || req.path === "/manifest") {
+        log(`Serving manifest for platform: ${platform || 'unknown'}`);
+        // In dev, Metro usually handles this, but we can provide a shim if needed
+        // For now, let Metro handle it by falling through to proxy
       }
 
-      // Proxy everything else to Metro (Expo Web)
+      // Proxy everything else to Metro (Expo Web/Native)
       return createProxyMiddleware({
         target: "http://localhost:8081",
         changeOrigin: true,
         ws: true,
+        onError: (err, req, res) => {
+          log("Proxy error:", err.message);
+          res.status(502).send("Metro bundler is not ready yet. Please wait a moment and refresh.");
+        }
       })(req, res, next);
     });
   } else {
