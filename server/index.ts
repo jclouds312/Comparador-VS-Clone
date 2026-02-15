@@ -145,8 +145,11 @@ function serveLandingPage({
   const protocol = forwardedProto || req.protocol || "https";
   const forwardedHost = req.header("x-forwarded-host");
   const host = forwardedHost || req.get("host");
-  const baseUrl = `${protocol}://${host}`;
-  const expsUrl = `${host}`;
+
+  // In Replit, we should use the public domain if available
+  const publicDomain = process.env.REPLIT_DEV_DOMAIN || host;
+  const baseUrl = `${protocol}://${publicDomain}`;
+  const expsUrl = `${publicDomain}`;
 
   log(`baseUrl`, baseUrl);
   log(`expsUrl`, expsUrl);
