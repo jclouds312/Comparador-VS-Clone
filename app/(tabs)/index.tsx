@@ -123,6 +123,12 @@ export default function HomeScreen() {
             color={Colors.surfaceLight}
             onPress={() => router.push("/(tabs)/vs")}
           />
+          <ActionButton
+            icon={<Ionicons name="settings-outline" size={18} color="#fff" />}
+            label="Admin"
+            color={Colors.surfaceLight}
+            onPress={() => router.push("/panel-vendedoras")}
+          />
         </View>
 
         <Pressable
